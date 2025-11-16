@@ -12,7 +12,7 @@ const pinBtn = document.getElementById('pin-btn');
 const copyOriginalBtn = document.getElementById('copy-original-btn');
 const copyTranslatedBtn = document.getElementById('copy-translated-btn');
 const copyImageBtn = document.getElementById('copy-image-btn');
-const saveImageBtn = document.getElementById('save-image-btn'); // <-- 新增
+const saveImageBtn = document.getElementById('save-image-btn');
 const ttsBtn = document.getElementById('tts-btn');
 
 // --- 状态变量 ---
@@ -21,26 +21,16 @@ let originalTextContent = '';
 let translatedTextContent = '';
 let currentImagePath = '';
 
-// --- 函数定义 ---
+// --- 函数定义 (保持不变) ---
 
-/**
- * --- 新增：给元素添加短暂的视觉反馈 ---
- * @param {HTMLElement} element - 需要反馈的DOM元素
- */
 function giveFeedback(element) {
     if (!element) return;
     element.classList.add('clicked-feedback');
     setTimeout(() => {
         element.classList.remove('clicked-feedback');
-    }, 200); // 反馈效果持续 200 毫秒
+    }, 200);
 }
 
-
-/**
- * 显示系统通知
- * @param {string} title - 通知标题
- * @param {string} body - 通知内容
- */
 async function notify(title, body) {
     let permissionGranted = await isPermissionGranted();
     if (!permissionGranted) {
@@ -52,9 +42,6 @@ async function notify(title, body) {
     }
 }
 
-/**
- * 切换窗口的置顶状态
- */
 async function togglePin() {
     isPinned = !isPinned;
     await appWindow.setAlwaysOnTop(isPinned);
@@ -62,54 +49,91 @@ async function togglePin() {
     pinBtn.title = isPinned ? "取消置顶" : "钉在最前";
 }
 
-/**
- * 复制文本到剪贴板
- * @param {string} text - 要复制的文本
- * @param {string} type - 文本类型 (e.g., "原文", "译文")
- */
 async function copyText(text, type) {
     if (!text) return;
-    await writeText(text);
-    await notify('复制成功', `${type}已复制到剪贴板。`);
+    try {
+        await writeText(text);
+        await notify('复制成功', `${type}已复制到剪贴板。`);
+    } catch (error) {
+        console.error(`复制 ${type} 失败:`, error);
+        await notify('复制失败', `未能将${type}复制到剪贴板。`);
+    }
 }
 
-/**
- * 使用浏览器TTS API朗读文本
- */
 function speakText() {
     if (!translatedTextContent || window.speechSynthesis.speaking) return;
     const utterance = new SpeechSynthesisUtterance(translatedTextContent);
     window.speechSynthesis.speak(utterance);
 }
 
+// --- 事件监听 (核心修改) ---
 
-// --- 事件监听 ---
-
-listen('translation_result', (event) => {
+/**
+ * 监听 OCR 结果事件。
+ * 这是收到的第一个事件，用于立即更新原文和图片信息。
+ */
+listen('ocr_result', (event) => {
     const payload = event.payload;
-    console.log("接收到翻译结果:", payload);
+    console.log("接收到 OCR 结果:", payload);
 
+    // 重置UI状态
+    translatedTextEl.style.color = 'var(--text-color-bright)';
+
+    // 步骤 1: 处理图片路径，无论成功失败都执行
+    if (payload.image_path) {
+        currentImagePath = payload.image_path;
+        copyImageBtn.style.display = 'inline-block';
+        saveImageBtn.style.display = 'inline-block';
+    } else {
+        currentImagePath = '';
+        copyImageBtn.style.display = 'none';
+        saveImageBtn.style.display = 'none';
+    }
+
+    // 步骤 2: 根据是否有错误来更新文本区域
     if (payload.error_message) {
-        originalTextContent = "错误";
+        // OCR 阶段就发生错误
+        originalTextContent = payload.original_text || "错误";
         translatedTextContent = payload.error_message;
+
         originalTextEl.textContent = originalTextContent;
         translatedTextEl.textContent = translatedTextContent;
         translatedTextEl.style.color = 'var(--error-color)';
-        currentImagePath = '';
-        copyImageBtn.style.display = 'none';
-        saveImageBtn.style.display = 'none'; // <-- 新增
     } else {
-        originalTextContent = payload.original_text;
-        translatedTextContent = payload.translated_text;
+        // OCR 成功
+        originalTextContent = payload.original_text || '';
+        translatedTextContent = ''; // 清空，等待翻译结果
+
         originalTextEl.textContent = originalTextContent;
-        translatedTextEl.textContent = translatedTextContent;
-        translatedTextEl.style.color = 'var(--text-color-bright)';
-        currentImagePath = payload.image_path;
-        copyImageBtn.style.display = 'inline-block';
-        saveImageBtn.style.display = 'inline-block'; // <-- 新增
+        translatedTextEl.textContent = '翻译中...'; // 关键的用户反馈
     }
 });
 
+
+/**
+ * 监听翻译更新事件。
+ * 这个事件在 OCR 成功后才会收到，用于更新译文区域。
+ */
+listen('translation_update', (event) => {
+    const payload = event.payload;
+    console.log("接收到翻译更新:", payload);
+
+    // 根据翻译结果更新UI
+    if (payload.error_message) {
+        // 翻译阶段发生错误
+        translatedTextContent = payload.error_message;
+        translatedTextEl.textContent = translatedTextContent;
+        translatedTextEl.style.color = 'var(--error-color)';
+    } else {
+        // 翻译成功
+        translatedTextContent = payload.translated_text || '';
+        translatedTextEl.textContent = translatedTextContent;
+        translatedTextEl.style.color = 'var(--text-color-bright)';
+    }
+});
+
+
+// --- 其他交互事件 (保持不变) ---
 document.body.addEventListener('dblclick', () => {
     appWindow.close();
 });
@@ -120,7 +144,6 @@ document.addEventListener('keydown', async (e) => {
     }
 });
 
-// --- 工具栏按钮事件 (核心修改区域) ---
 pinBtn.addEventListener('click', togglePin);
 
 copyOriginalBtn.addEventListener('click', () => {
@@ -150,7 +173,6 @@ copyImageBtn.addEventListener('click', async () => {
     }
 });
 
-// --- 新增：保存图片按钮事件 ---
 saveImageBtn.addEventListener('click', async () => {
     giveFeedback(saveImageBtn);
     if (!currentImagePath) return;
@@ -167,4 +189,4 @@ saveImageBtn.addEventListener('click', async () => {
 pinBtn.classList.add('active');
 pinBtn.title = "取消置顶";
 copyImageBtn.style.display = 'none';
-saveImageBtn.style.display = 'none'; // <-- 新增
+saveImageBtn.style.display = 'none';
