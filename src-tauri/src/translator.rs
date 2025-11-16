@@ -1,32 +1,23 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
+use tauri::AppHandle; // 引入 AppHandle，用于路径解析
+use std::process::Command; // 引入用于执行外部命令的模块
+use encoding_rs::GBK; // --- 1. 引入 GBK 解码器 ---
 
-// --- 1. 定义与DeepL API交互的数据结构 ---
+// 在 Windows 系统上，需要额外引入此模块来隐藏命令行窗口
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
-// 发送给DeepL API的请求体结构
-#[derive(Debug, Serialize)]
-struct DeepLRequest {
-    text: Vec<String>,
-    target_lang: String,
-    source_lang: Option<String>, // (可选) 指定源语言
-}
+// --- 1. 定义与本地翻译 Sidecar 交互的数据结构 ---
 
-// 从DeepL API接收的响应体结构
+// 用于解析 translate.exe 输出的 JSON 响应
 #[derive(Debug, Deserialize)]
-struct DeepLResponse {
-    translations: Vec<Translation>,
+struct LocalTranslationResponse {
+    code: i32,
+    translated_text: Option<String>,
+    error_message: Option<String>,
 }
 
-// 单个翻译结果的结构
-#[derive(Debug, Deserialize)]
-struct Translation {
-    // `serde(rename)` 属性用于将JSON中的字段名映射到Rust结构体的字段名
-    #[serde(rename = "detected_source_language")]
-    _detected_source_language: String, // 我们暂时用不到这个字段，所以用下划线开头
-    text: String,
-}
-
-
-// --- 2. 定义统一的翻译器Trait（接口） ---
+// --- 2. 定义统一的翻译器Trait（接口），这部分保持不变 ---
 #[async_trait::async_trait]
 pub trait Translator {
     async fn translate(
@@ -36,79 +27,79 @@ pub trait Translator {
     ) -> Result<String, String>;
 }
 
+// --- 3. 实现本地翻译器 ---
 
-// --- 3. 实现DeepL翻译器 ---
-
-pub struct DeepLTranslator {
-    api_key: String,
+pub struct LocalTranslator {
+    // LocalTranslator 需要 AppHandle 来定位打包后的 sidecar 程序
+    app_handle: AppHandle,
 }
 
-impl DeepLTranslator {
-    pub fn new(api_key: String) -> Self {
-        Self { api_key }
+impl LocalTranslator {
+    pub fn new(app_handle: AppHandle) -> Self {
+        Self { app_handle }
     }
 }
 
 #[async_trait::async_trait]
-impl Translator for DeepLTranslator {
-    /// 实现翻译方法
+impl Translator for LocalTranslator {
+    /// 实现翻译方法，通过调用外部 translate.exe 程序
     async fn translate(
         &self,
         text: &str,
         target_lang: &str,
     ) -> Result<String, String> {
-        // --- a. 确定API URL ---
-        let api_url = if self.api_key.ends_with(":fx") {
-            "https://api-free.deepl.com/v2/translate"
-        } else {
-            "https://api.deepl.com/v2/translate"
-        };
+        // --- a. 定位 sidecar 可执行文件路径 ---
+        // 使用 Tauri 的 Path Resolver 来安全地定位打包到应用资源中的外部程序
+        let translator_exe_path = self.app_handle
+            .path_resolver()
+            .resolve_resource("external/Translator/translate.exe")
+            .ok_or_else(|| "在应用资源中找不到翻译器可执行文件".to_string())?;
 
-        // --- b. 构建请求体 ---
-        let request_body = DeepLRequest {
-            text: vec![text.to_string()],
-            target_lang: target_lang.to_string(),
-            source_lang: None,
-        };
+        // --- b. 构建命令行 ---
+        let mut command = Command::new(&translator_exe_path);
+        command.args(&[
+            "--text", text,
+            "--source", "en", // 当前版本暂时硬编码源语言为英语
+            "--target", target_lang,
+        ]);
 
-        // --- c. 发送HTTP请求 ---
-        let client = reqwest::Client::new();
-        let res = client
-            .post(api_url)
-            .header("Authorization", format!("DeepL-Auth-Key {}", self.api_key))
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| format!("发送翻译请求失败: {}", e))?;
+        // 在 Windows 上，添加此标志可以在执行命令时不弹出黑色的命令行窗口
+        #[cfg(windows)]
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
-        // --- d. 处理响应 ---
-        if !res.status().is_success() {
-            let status = res.status();
-            let body = res.text().await.unwrap_or_default();
-            return Err(format!("翻译API返回错误: {} - {}", status, body));
+        // --- c. 执行命令并捕获输出 ---
+        let output = command
+            .output()
+            .map_err(|e| format!("执行翻译进程失败: {}", e))?;
+
+        // --- d. 处理和解析响应 ---
+        if !output.status.success() {
+            // --- 2. 使用 GBK 解码 stderr ---
+            let stderr = GBK.decode(&output.stderr).0.into_owned();
+            return Err(format!("翻译进程执行出错: {}", stderr));
         }
 
-        // --- e. 解析JSON并返回结果 ---
-        let deepl_response: DeepLResponse = res
-            .json()
-            .await
-            .map_err(|e| format!("解析翻译结果失败: {}", e))?;
+        // --- 2. 使用 GBK 解码 stdout ---
+        let (decoded_stdout, _, _) = GBK.decode(&output.stdout);
+        let stdout = decoded_stdout.into_owned();
 
-        deepl_response
-            .translations
-            .get(0)
-            .map(|t| t.text.clone())
-            .ok_or_else(|| "API响应中未找到翻译结果".to_string())
+
+        // --- e. 解析 JSON 并返回结果 ---
+        let response: LocalTranslationResponse = serde_json::from_str(&stdout)
+            .map_err(|e| format!("解析翻译结果JSON失败: {}. 原始输出: {}", e, stdout))?;
+
+        match response.code {
+            200 => response.translated_text.ok_or_else(|| "翻译成功但未返回文本".to_string()),
+            _ => Err(response.error_message.unwrap_or_else(|| "翻译器返回未知错误".to_string())),
+        }
     }
 }
 
-/// 辅助函数，根据API Key创建并返回一个翻译器实例
+/// 辅助函数，创建一个本地翻译器实例
 // 核心修正：
-// 1. 参数名改为 `api_key` 以反映其真实内容。
-// 2. 函数体直接使用传入的 `api_key`。
-pub fn get_translator(api_key: String) -> Box<dyn Translator + Send + Sync> {
-    // 删除错误的行: `let settings = state.settings.lock().unwrap();`
-
-    // 直接使用传入的 api_key 创建 DeepLTranslator 实例
-    Box::new(DeepLTranslator::new(api_key))
+// 1. 函数不再需要 api_key 参数。
+// 2. 函数现在需要 AppHandle 来创建 LocalTranslator。
+pub fn get_translator(app: &AppHandle) -> Box<dyn Translator + Send + Sync> {
+    // 创建并返回本地翻译器的实例
+    Box::new(LocalTranslator::new(app.clone()))
 }

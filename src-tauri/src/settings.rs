@@ -6,7 +6,6 @@ use tauri::{AppHandle, GlobalShortcutManager, Manager, PathResolver, State};
 use tauri_plugin_autostart::ManagerExt;
 use arboard::ImageData;
 use image::io::Reader as ImageReader;
-// --- 核心修正：引入 tauri::api::path ---
 use tauri::api::path as tauri_path;
 
 pub struct AppState {
@@ -17,7 +16,7 @@ pub struct AppState {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AppSettings {
     pub shortcut: String,
-    pub api_key: String,
+    // pub api_key: String, // <- 移除此行：不再需要API Key
     pub target_lang: String,
     pub autostart: bool,
 }
@@ -26,13 +25,14 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             shortcut: "F1".to_string(),
-            api_key: "".to_string(),
-            target_lang: "ZH".to_string(),
+            // api_key: "".to_string(), // <- 移除此行
+            target_lang: "zh".to_string(),
             autostart: false,
         }
     }
 }
 
+// ... [AppSettings 的 load 和 save 方法保持不变] ...
 impl AppSettings {
     fn get_config_path(path_resolver: &PathResolver) -> PathBuf {
         path_resolver.app_config_dir().expect("无法获取应用配置目录").join("settings.json")
@@ -55,6 +55,8 @@ impl AppSettings {
     }
 }
 
+// ... [get_settings, set_settings, copy_image_to_clipboard, save_image_to_desktop 命令保持不变] ...
+// ... [请保留您原有的这些 tauri::command 函数] ...
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> Result<AppSettings, String> {
     Ok(state.settings.lock().unwrap().clone())
@@ -103,9 +105,7 @@ pub async fn copy_image_to_clipboard(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-// --- 核心修正：移除 AppHandle 参数，因为它不再需要 ---
 pub async fn save_image_to_desktop(path: String) -> Result<(), String> {
-    // --- 核心修正：使用 tauri::api::path::desktop_dir ---
     let desktop_dir = tauri_path::desktop_dir().ok_or("无法获取桌面路径".to_string())?;
     let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
     let new_filename = format!("screenshot-{}.png", timestamp);

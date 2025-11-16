@@ -5,7 +5,7 @@ const { listen } = window.__TAURI__.event; // 明确导入 listen
 
 // --- DOM 元素获取 ---
 const shortcutInput = document.getElementById('shortcut-input');
-const apiKeyInput = document.getElementById('api-key-input');
+// const apiKeyInput = document.getElementById('api-key-input'); // <- 移除
 const targetLangSelect = document.getElementById('target-lang-select');
 const autostartCheckbox = document.getElementById('autostart-checkbox');
 const saveBtn = document.getElementById('save-btn');
@@ -28,7 +28,7 @@ async function loadSettings() {
 
         // 更新UI元素的值
         shortcutInput.value = settings.shortcut;
-        apiKeyInput.value = settings.api_key;
+        // apiKeyInput.value = settings.api_key; // <- 移除
         targetLangSelect.value = settings.target_lang;
         autostartCheckbox.checked = settings.autostart;
 
@@ -45,7 +45,7 @@ async function saveSettings() {
     // 从UI元素收集最新的设置值
     const newSettings = {
         shortcut: shortcutInput.value,
-        api_key: apiKeyInput.value,
+        // api_key: apiKeyInput.value, // <- 移除
         target_lang: targetLangSelect.value,
         autostart: autostartCheckbox.checked,
     };
@@ -97,7 +97,7 @@ function formatShortcut(e) {
 }
 
 
-// --- 事件监听 ---
+// --- 事件监听 (保持不变) ---
 
 // 保存按钮点击事件
 saveBtn.addEventListener('click', saveSettings);

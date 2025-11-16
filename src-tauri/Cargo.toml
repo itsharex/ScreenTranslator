@@ -19,8 +19,8 @@ tauri = { version = "1.6", features = [ "clipboard-write-text",
     "fs-all",             # 开启所有文件系统操作权限
     "path-all",           # 开启所有路径解析权限
     "system-tray",        # 开启系统托盘功能
-    "http-request",       # 允许发起HTTP请求
-    "notification-all"] } # <--- 修改：开启完整的剪贴板功能，以支持复制图片
+    "http-request",       # 允许发起HTTP请求 (此功能可能仍用于其他地方，暂时保留)
+    "notification-all"] }
 # Tauri 插件：用于管理开机自启动
 tauri-plugin-autostart = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
 
@@ -31,8 +31,8 @@ serde_json = "1.0"
 # Tokio: 异步运行时，用于处理耗时操作
 tokio = { version = "1", features = ["full"] }
 
-# Reqwest: 一个强大易用的异步HTTP客户端，用于调用翻译API
-reqwest = { version = "0.12", features = ["json"] }
+# Reqwest: 一个强大易用的异步HTTP客户端 (!!! 已不再需要用于翻译，可以移除 !!!)
+# reqwest = { version = "0.12", features = ["json"] } # <- 注释或删除此行
 
 # Screenshots: 用于截取屏幕
 screenshots = "0.6"
@@ -47,9 +47,11 @@ arboard = "3"
 once_cell = "1.19"
 async-trait = "0.1.89"
 
-# --- 新增依赖 ---
 # Base64: 用于将图片数据编码，以便安全地通过事件发送给前端
 base64 = "0.22"
+
+# --- 新增依赖：用于处理 GBK <-> UTF-8 编码转换 ---
+encoding_rs = "0.8"
 
 
 [features]

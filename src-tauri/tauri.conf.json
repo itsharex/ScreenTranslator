@@ -30,8 +30,6 @@
         "all": false,
         "request": true,
         "scope": [
-          "https://api-free.deepl.com/*",
-          "https://api.deepl.com/*"
         ]
       },
       "globalShortcut": {
@@ -67,7 +65,8 @@
         "icons/icon.ico"
       ],
       "resources": [
-        "external"
+        "external",
+        "external/translator"
       ]
     },
     "security": {
