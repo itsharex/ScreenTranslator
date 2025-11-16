@@ -140,7 +140,6 @@ body[data-tauri-drag-region] {
     width: 100vw;
     height: 100vh;
     background-color: var(--bg-color-transparent);
-    border-radius: 8px;
     border: 1px solid var(--border-color);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     display: flex;
@@ -163,7 +162,7 @@ body[data-tauri-drag-region] {
     padding: 4px 6px;
     cursor: pointer;
     border-radius: 4px;
-    transition: background-color 0.2s;
+    transition: background-color 0.15s, transform 0.1s; /* 添加平滑过渡效果 */
 }
 
 .toolbar .actions button:hover {
@@ -173,6 +172,12 @@ body[data-tauri-drag-region] {
 .toolbar .actions button.active {
     background-color: var(--accent-color);
     color: #fff;
+}
+
+/* 新增：用于点击反馈的专用类 */
+.toolbar .actions button.clicked-feedback {
+    background-color: var(--accent-color); /* 短暂变为高亮颜色 */
+    transform: scale(0.92); /* 轻微缩小，模拟按下效果 */
 }
 
 
@@ -215,3 +220,36 @@ body[data-tauri-drag-region] {
 .text-area::-webkit-scrollbar { width: 6px; }
 .text-area::-webkit-scrollbar-track { background: #333; border-radius: 3px; }
 .text-area::-webkit-scrollbar-thumb { background-color: #555; border-radius: 3px; }
+
+
+/* --- 图片预览窗口 (image_viewer.html) 样式 --- */
+
+#viewer-container {
+    box-sizing: border-box;
+    width: 100vw;
+    height: 100vh;
+    padding: 0; /* --- 修改: 移除内边距 --- */
+    display: flex;
+    flex-direction: column;
+    /* --- 修改: 实现 2px 高亮边框 --- */
+    box-shadow: 0 0 0 2px var(--accent-color);
+    background-color: var(--bg-color-transparent);
+}
+
+/* --- 已移除: #viewer-container .toolbar 样式 --- */
+
+.image-area {
+    flex: 1; /* 占据所有剩余空间 */
+    display: flex;
+    justify-content: center; /* 水平居中图片 */
+    align-items: center; /* 垂直居中图片 */
+    overflow: hidden; /* 防止图片溢出容器 */
+    min-height: 0; /* 重要的flex布局修复 */
+}
+
+#screenshot-image {
+    /* 确保图片能自适应容器大小，且不被拉伸变形 */
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}

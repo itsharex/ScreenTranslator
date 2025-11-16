@@ -41,7 +41,8 @@
         "all": true,
         "scope": [
           "$APP/*",
-          "$RESOURCE/*"
+          "$RESOURCE/*",
+          "$DESKTOP/*"
         ]
       },
       "path": {
@@ -102,6 +103,19 @@
         "width": 400,
         "height": 200,
         "decorations": false,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true
+      },
+      {
+        "label": "image_viewer",
+        "url": "image_viewer.html",
+        "title": "截图预览",
+        "width": 600,
+        "height": 400,
+        "decorations": false,
+        "transparent": true,
+        "resizable": true,
         "alwaysOnTop": true,
         "visible": false,
         "skipTaskbar": true

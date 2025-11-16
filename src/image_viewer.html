@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>截图预览</title>
+    <!-- 复用现有的样式文件 -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<!-- 移除了 data-tauri-drag-region 属性 -->
+<body>
+
+<!-- 主容器，用于实现高亮边框和布局 -->
+<div id="viewer-container">
+    <!-- 图片展示区域 -->
+    <div class="image-area">
+        <!-- 截图图片将显示在这里 -->
+        <img id="screenshot-image" src="" alt="Screenshot Preview">
+    </div>
+</div>
+
+<!-- 引入该页面专属的JS逻辑文件 -->
+<script type="module" src="js/image_viewer.js"></script>
+</body>
+</html>

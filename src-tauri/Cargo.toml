@@ -12,7 +12,7 @@ tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
 # Tauri 核心库，并开启所有需要的功能
-tauri = { version = "1.6", features = [
+tauri = { version = "1.6", features = [ "clipboard-write-text",
     "window-all",         # 开启所有窗口管理功能
     "shell-sidecar",      # 允许执行绑定的外部程序
     "global-shortcut-all",# 允许注册全局快捷键
@@ -20,8 +20,7 @@ tauri = { version = "1.6", features = [
     "path-all",           # 开启所有路径解析权限
     "system-tray",        # 开启系统托盘功能
     "http-request",       # 允许发起HTTP请求
-    "notification-all",   # 允许发送系统通知
-    "clipboard-write-text"] }
+    "notification-all"] } # <--- 修改：开启完整的剪贴板功能，以支持复制图片
 # Tauri 插件：用于管理开机自启动
 tauri-plugin-autostart = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
 
@@ -47,6 +46,10 @@ arboard = "3"
 # once_cell: 用于安全地初始化全局静态变量
 once_cell = "1.19"
 async-trait = "0.1.89"
+
+# --- 新增依赖 ---
+# Base64: 用于将图片数据编码，以便安全地通过事件发送给前端
+base64 = "0.22"
 
 
 [features]
