@@ -130,3 +130,35 @@ translator_sidecar/
 ...复制到您的 **Tauri项目** 的 `src-tauri/external/translator/` 目录下，为阶段二的集成做准备。
 
 pyinstaller --onefile  --hidden-import "argostranslate.definitions"  --hidden-import "argostranslate.networking"  --hidden-import "argostranslate.package"  --hidden-import "argostranslate.settings"  --hidden-import "argostranslate.translate"  translate.py
+
+
+### 如何准备环境和运行
+
+1.  **安装核心库**：
+    您需要安装 `argostranslate` 和 `ctranslate2`。为了启用GPU支持，`ctranslate2` 需要和您系统中的CUDA/ROCm库一起安装。
+
+    *   **对于NVIDIA GPU (推荐)**:
+        *   确保您已安装 NVIDIA 驱动和 [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (例如 11.x 或 12.x 版本)。
+        *   安装带CUDA支持的`ctranslate2`：
+            ```bash
+            # 假设您使用CUDA 12.x, cuBLAS版本对应
+            pip install "ctranslate2[cuda]"
+            pip install argostranslate
+            ```
+
+    *   **对于AMD GPU**:
+        *   环境配置相对复杂，需要安装 [ROCm](https://rocm.docs.amd.com/en/latest/)。
+        *   安装带ROCm支持的`ctranslate2`：
+            ```bash
+            pip install "ctranslate2[rocm]"
+            pip install argostranslate
+            ```
+
+    *   **仅使用CPU**:
+        ```bash
+        pip install ctranslate2 argostranslate
+        ```
+
+
+python .\translate.py --source "en" --target "zh" --text "Hello world.\nThis is a new paragraph."     
+

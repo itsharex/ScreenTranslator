@@ -29,8 +29,7 @@
       "http": {
         "all": false,
         "request": true,
-        "scope": [
-        ]
+        "scope": []
       },
       "globalShortcut": {
         "all": true
@@ -55,7 +54,7 @@
     },
     "bundle": {
       "active": true,
-      "targets": "all",
+      "targets": ["nsis"],
       "identifier": "com.tauri.screentranslator",
       "icon": [
         "icons/32x32.png",
@@ -65,9 +64,13 @@
         "icons/icon.ico"
       ],
       "resources": [
-        "external",
-        "external/translator"
-      ]
+        "external/**"
+      ],
+      "windows": {
+        "nsis": {
+          "installMode": "currentUser"
+        }
+      }
     },
     "security": {
       "csp": null
