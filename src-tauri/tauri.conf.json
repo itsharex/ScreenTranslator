@@ -64,7 +64,8 @@
         "icons/icon.ico"
       ],
       "resources": [
-        "external/**"
+        "external/PaddleOCR-json/**",
+        "external/Translator/translate.exe"
       ],
       "windows": {
         "nsis": {
