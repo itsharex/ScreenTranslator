@@ -14,24 +14,38 @@
     <div class="setting-item">
         <label for="shortcut-input">截图快捷键</label>
         <input type="text" id="shortcut-input" placeholder="点击并按下快捷键" readonly>
-        <small>默认:F1。支持的组合键: Alt, Ctrl, Shift, Super (Win/Cmd)。</small>
+        <small>默认:F1。用于启动截图。支持的组合键: Alt, Ctrl, Shift, Super (Win/Cmd)。</small>
     </div>
 
-    <!-- --- 移除 API Key 设置 ---
+    <!-- --- 新增：查看截图快捷键 --- -->
     <div class="setting-item">
-        <label for="api-key-input">DeepL API Key</label>
-        <input type="password" id="api-key-input" placeholder="请输入你的 DeepL API Key">
-        <small>获取key请访问 <a href="https://www.deepl.com/pro-api" target="_blank">DeepL API 官网</a>。支持 Free 和 Pro。</small>
+        <label for="view-shortcut-input">查看截图快捷键</label>
+        <input type="text" id="view-shortcut-input" placeholder="点击并按下快捷键" readonly>
+        <small>默认:F3。用于重新打开上一次的截图预览窗口。</small>
     </div>
-    -->
+
 
     <!-- 语言设置 -->
     <div class="setting-item">
         <label for="target-lang-select">目标语言</label>
         <select id="target-lang-select">
             <option value="zh">简体中文 (Simplified Chinese)</option>
+            <!-- --- 新增：英语选项 --- -->
+            <option value="en">English</option>
             <!-- 可以根据需要添加更多语言 -->
         </select>
+        <small>仅在开启翻译功能后生效。</small>
+    </div>
+
+    <!-- 功能开关 -->
+    <div class="setting-item checkbox-item">
+        <input type="checkbox" id="ocr-checkbox">
+        <label for="ocr-checkbox">开启文字识别 (OCR)</label>
+    </div>
+
+    <div class="setting-item checkbox-item">
+        <input type="checkbox" id="translation-checkbox">
+        <label for="translation-checkbox">开启翻译</label>
     </div>
 
     <!-- 开机自启 -->
@@ -39,6 +53,7 @@
         <input type="checkbox" id="autostart-checkbox">
         <label for="autostart-checkbox">开机自启动</label>
     </div>
+
 
     <!-- 保存按钮 -->
     <div class="actions">

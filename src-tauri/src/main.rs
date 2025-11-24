@@ -47,15 +47,27 @@ fn main() {
             _ => {}
         })
         .setup(|app| {
+            // 1. 加载设置或使用默认值
             let settings = AppSettings::load(&app.path_resolver()).unwrap_or_default();
+
+            // 2. 将设置存入 AppState
             app.manage(AppState {
-                settings: std::sync::Mutex::new(settings),
+                settings: std::sync::Mutex::new(settings.clone()),
                 last_screenshot_path: std::sync::Mutex::new(None),
             });
-            let state: tauri::State<AppState> = app.state();
-            let shortcut = state.settings.lock().unwrap().shortcut.clone();
-            register_global_shortcut(app.handle(), &shortcut).unwrap_or_else(|e| eprintln!("注册截图快捷键失败: {}", e));
-            register_f3_shortcut(app.handle()).unwrap_or_else(|e| eprintln!("注册F3快捷键失败: {}", e));
+
+            // 3. 注册主截图快捷键
+            println!("应用启动，注册主截图快捷键: {}", &settings.shortcut);
+            register_global_shortcut(app.handle(), &settings.shortcut)
+                .unwrap_or_else(|e| eprintln!("启动时注册主截图快捷键失败: {}", e));
+
+            // 4. 从设置中读取并注册“查看截图”快捷键
+            println!("应用启动，注册查看截图快捷键: {}", &settings.view_image_shortcut);
+            register_view_image_shortcut(app.handle(), &settings.view_image_shortcut)
+                .unwrap_or_else(|e| eprintln!("启动时注册查看截图快捷键失败: {}", e));
+
+
+            // 5. 显示主窗口并通知前端后端已就绪
             let main_window = app.get_window("main").unwrap();
             main_window.show()?;
             main_window.emit("backend-ready", ()).unwrap();
@@ -65,9 +77,13 @@ fn main() {
         .run(|_app_handle, event| { if let tauri::RunEvent::ExitRequested { api, .. } = event { api.prevent_exit(); } });
 }
 
+// 主截图快捷键注册函数 (保持不变)
 pub fn register_global_shortcut(app_handle: AppHandle, shortcut: &str) -> Result<(), tauri::Error> {
     let mut manager = app_handle.global_shortcut_manager();
-    let _ = manager.unregister(shortcut);
+
+    if manager.is_registered(shortcut)? {
+        manager.unregister(shortcut)?;
+    }
 
     let shortcut_for_closure = shortcut.to_string();
 
@@ -84,7 +100,6 @@ pub fn register_global_shortcut(app_handle: AppHandle, shortcut: &str) -> Result
                     .fullscreen(true)
                     .decorations(false)
                     .transparent(true)
-                    // --- BUG修复：明确禁止调整窗口大小，防止操作系统窗口贴靠功能干扰 ---
                     .resizable(false)
                     .build()
                     .unwrap();
@@ -93,12 +108,25 @@ pub fn register_global_shortcut(app_handle: AppHandle, shortcut: &str) -> Result
     }).map_err(Into::into)
 }
 
-fn register_f3_shortcut(app_handle: AppHandle) -> Result<(), tauri::Error> {
-    let mut manager = app_handle.global_shortcut_manager();
-    let _ = manager.unregister("F3");
 
-    manager.register("F3", move || {
-        println!("F3 快捷键被按下");
+// “查看截图”快捷键的注册函数
+pub fn register_view_image_shortcut(app_handle: AppHandle, shortcut: &str) -> Result<(), tauri::Error> {
+    let mut manager = app_handle.global_shortcut_manager();
+
+    if manager.is_registered(shortcut)? {
+        let _ = manager.unregister(shortcut);
+    }
+
+    // --- 核心修复 ---
+    // 1. 创建一个 String 副本，专门用于移动到闭包中。
+    //    原始的 `shortcut: &str` 仍然用于 `manager.register` 的第一个参数。
+    let shortcut_for_closure = shortcut.to_string();
+
+    // 2. `manager.register` 的第一个参数使用原始的 `shortcut` 引用。
+    //    闭包通过 `move` 关键字获取 `shortcut_for_closure` 的所有权。
+    //    这样，借用和所有权移动发生在不同的数据上，冲突解决。
+    manager.register(shortcut, move || {
+        println!("查看截图快捷键 {} 被按下", shortcut_for_closure);
 
         let handle_for_thread = app_handle.clone();
 

@@ -49,17 +49,25 @@ impl Translator for LocalTranslator {
         target_lang: &str,
     ) -> Result<String, String> {
         // --- a. 定位 sidecar 可执行文件路径 ---
-        // 使用 Tauri 的 Path Resolver 来安全地定位打包到应用资源中的外部程序
         let translator_exe_path = self.app_handle
             .path_resolver()
             .resolve_resource("external/Translator/translate.exe")
             .ok_or_else(|| "在应用资源中找不到翻译器可执行文件".to_string())?;
 
         // --- b. 构建命令行 ---
+        // --- 核心修改：根据目标语言动态决定源语言 ---
+        let source_lang = if target_lang == "en" {
+            "zh" // 如果目标是英语，则假定源语言是中文
+        } else {
+            "en" // 否则，假定源语言是英语（保持原有逻辑）
+        };
+
+        println!("翻译请求: 源语言='{}', 目标语言='{}'", source_lang, target_lang);
+
         let mut command = Command::new(&translator_exe_path);
         command.args(&[
             "--text", text,
-            "--source", "en", // 当前版本暂时硬编码源语言为英语
+            "--source", source_lang, // 使用动态决定的源语言
             "--target", target_lang,
         ]);
 
@@ -96,9 +104,7 @@ impl Translator for LocalTranslator {
 }
 
 /// 辅助函数，创建一个本地翻译器实例
-// 核心修正：
-// 1. 函数不再需要 api_key 参数。
-// 2. 函数现在需要 AppHandle 来创建 LocalTranslator。
+// 这部分保持不变
 pub fn get_translator(app: &AppHandle) -> Box<dyn Translator + Send + Sync> {
     // 创建并返回本地翻译器的实例
     Box::new(LocalTranslator::new(app.clone()))

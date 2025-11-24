@@ -8,7 +8,7 @@
   },
   "package": {
     "productName": "ScreenTranslator",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "tauri": {
     "allowlist": {
@@ -64,8 +64,7 @@
         "icons/icon.ico"
       ],
       "resources": [
-        "external/PaddleOCR-json/**",
-        "external/Translator/translate.exe"
+        "external/**"
       ],
       "windows": {
         "nsis": {
@@ -85,7 +84,7 @@
         "title": "ScreenTranslator 设置",
         "label": "main",
         "width": 550,
-        "height": 450,
+        "height": 750,
         "resizable": false,
         "fullscreen": false,
         "visible": true
