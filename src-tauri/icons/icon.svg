@@ -1,6 +1,16 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-    <rect width="1024" height="1024" rx="128" ry="128" fill="#2E3440"/>
-    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-size="700" font-weight="bold" fill="#88C0D0">
-        T
-    </text>
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="grad-1" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#007ACC"/>
+            <stop offset="1" stop-color="#009688"/>
+        </linearGradient>
+    </defs>
+    <rect width="64" height="64" rx="12" fill="url(#grad-1)"/>
+    <!-- 取景框形状 -->
+    <path d="M20 28V22C20 20.8954 20.8954 20 22 20H28" stroke="white" stroke-width="4" stroke-linecap="round"/>
+    <path d="M44 28V22C44 20.8954 43.1046 20 42 20H36" stroke="white" stroke-width="4" stroke-linecap="round"/>
+    <path d="M20 36V42C20 43.1046 20.8954 44 22 44H28" stroke="white" stroke-width="4" stroke-linecap="round"/>
+    <path d="M44 36V42C44 43.1046 43.1046 44 42 44H36" stroke="white" stroke-width="4" stroke-linecap="round"/>
+    <!-- 中心的加号 -->
+    <path d="M32 28V36M28 32H36" stroke="white" stroke-width="3" stroke-linecap="round"/>
 </svg>
