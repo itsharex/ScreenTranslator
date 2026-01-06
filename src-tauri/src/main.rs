@@ -11,8 +11,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::MacosLauncher;
 use settings::{AppState, AppSettings};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{Ordering};
 use base64::{Engine as _, engine::general_purpose};
 use std::fs;
 

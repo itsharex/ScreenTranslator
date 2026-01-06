@@ -143,8 +143,10 @@ function updateUIBasedOnAction(actionValue) {
  */
 async function loadSettings() {
     try {
+        console.log("[前端] 正在调用 'get_settings' 从后端获取配置...");
         const settings = await invoke('get_settings');
         currentSettings = settings; // 缓存设置
+        console.log("[前端] 成功获取配置:", settings);
 
         // 更新各个表单控件的值
         shortcutInput.value = settings.shortcut;
@@ -429,10 +431,17 @@ async function initialize() {
 }
 
 
-// --- 【核心修改】启动逻辑 ---
-// 之前是直接调用 initialize()，可能会在后端准备好之前就执行，导致配置加载不正确。
-// 现在我们监听 `DOMContentLoaded` 事件，确保在整个页面的 HTML 结构完全加载并解析完毕后，
-// 才开始执行初始化函数。这给了后端充分的准备时间，从而解决了启动时的竞态条件问题。
+// --- 启动逻辑 ---
+// 监听 DOMContentLoaded 事件，确保在整个页面的 HTML 结构完全加载并解析完毕后执行。
 document.addEventListener('DOMContentLoaded', () => {
-    initialize();
+    // --- 【核心修复】解决启动时的竞态条件 (Race Condition) ---
+    // 问题：在某些情况下，前端JS的初始化请求 (`invoke('get_settings')`) 可能比Tauri后端
+    //       完全准备好并加载完配置文件 (`settings.json`) 更快。这会导致前端获取到的是
+    //       默认设置或空设置，从而在UI上显示错误的值（例如快捷键显示为'F1'）。
+    // 方案：在此处增加一个短暂的延迟。这个延迟给了后端足够的时间来完成其启动序列，
+    //       确保在前端请求配置时，后端已经准备好提供正确的、已保存的用户设置。
+    // 鲁棒性：500ms对于大多数系统来说是足够安全的。一个更复杂的方案可能是实现一个
+    //          带有重试逻辑的加载函数，但这会增加代码的侵入性。当前方案以最小的
+    //          改动解决了核心问题。
+    setTimeout(initialize, 500);
 });
