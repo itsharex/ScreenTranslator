@@ -19,11 +19,13 @@ tauri = { version = "1.6", features = [
     "global-shortcut-all",
     "fs-all",
     "path-all",
-    "system-tray",
     "http-request",
     "notification-all"
 ] }
 tauri-plugin-autostart = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
+
+# --- 新增：单实例插件 (用于防止重复运行并唤醒窗口) ---
+tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
 
 # 序列化
 serde = { version = "1.0", features = ["derive"] }
@@ -46,14 +48,10 @@ async-trait = "0.1.89"
 base64 = "0.22"
 encoding_rs = "0.8"
 
-# --- 新增依赖：用于下载引擎和解压 ---
-# reqwest: HTTP 客户端，开启 stream 特性用于下载进度条
+# 用于下载引擎和解压
 reqwest = { version = "0.11", features = ["stream", "json"] }
-# futures-util: 用于处理 reqwest 的异步流
 futures-util = "0.3"
-# zip: 用于解压 .zip 文件
 zip = "0.6"
-# sevenz-rust: 用于解压 .7z 文件 (RapidOCR)
 sevenz-rust = "0.1"
 
 [features]

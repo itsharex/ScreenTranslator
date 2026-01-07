@@ -6,8 +6,7 @@ mod settings;
 mod translator;
 
 use tauri::{
-    AppHandle, GlobalShortcutManager, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu,
-    CustomMenuItem, State,
+    AppHandle, GlobalShortcutManager, Manager, State,
 };
 use tauri_plugin_autostart::MacosLauncher;
 use settings::{AppState, AppSettings};
@@ -26,24 +25,46 @@ struct OcrPayload { original_text: Option<String>, error_message: Option<String>
 struct TranslationUpdatePayload { translated_text: Option<String>, error_message: Option<String> }
 
 fn main() {
-    let show_settings = CustomMenuItem::new("show_settings".to_string(), "设置");
-    let quit = CustomMenuItem::new("quit".to_string(), "退出");
-    let tray_menu = SystemTrayMenu::new()
-        .add_item(show_settings)
-        .add_native_item(tauri::SystemTrayMenuItem::Separator)
-        .add_item(quit);
-    let system_tray = SystemTray::new().with_menu(tray_menu);
-
     tauri::Builder::default()
+        // 注入全局状态，使用 Default 避免竞态条件
         .manage(AppState::default())
+
+        // --- 插件初始化 ---
+        // 1. 自动启动插件
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
+
+        // 2. 单实例插件初始化 (防止重复启动并唤醒窗口)
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            println!("检测到第二个实例启动，正在唤醒主窗口...");
+            // 获取名为 "main" 的主设置窗口
+            if let Some(window) = app.get_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+
+        // --- 核心修复：窗口事件监听 ---
+        // 监听所有窗口事件，专门处理主窗口的关闭逻辑
+        .on_window_event(|event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event.event() {
+                let window = event.window();
+                // 只有当被关闭的窗口是 "main" (设置页面) 时，才执行完全退出
+                if window.label() == "main" {
+                    println!("主窗口关闭，正在终止所有进程...");
+                    // 强制退出应用程序，清理所有隐藏窗口和后台线程
+                    window.app_handle().exit(0);
+                }
+            }
+        })
+
+        // 注册命令处理程序
         .invoke_handler(tauri::generate_handler![
             // 核心功能
             commands::process_screenshot_area,
             commands::process_image_from_path,
-            // --- 新增: 注册取消截图命令 ---
             commands::cancel_screenshot,
-            // 设置
+            // 设置管理
             settings::get_settings,
             settings::set_settings,
             // 辅助功能
@@ -55,27 +76,20 @@ fn main() {
             commands::check_translator_status,
             commands::download_translator
         ])
-        .system_tray(system_tray)
-        .on_system_tray_event(|app, event| match event {
-            SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
-                "quit" => std::process::exit(0),
-                "show_settings" => { if let Some(w) = app.get_window("main") { w.show().unwrap(); w.set_focus().unwrap(); } }
-                _ => {}
-            },
-            SystemTrayEvent::DoubleClick { .. } => {
-                if let Some(w) = app.get_window("main") { w.show().unwrap(); w.set_focus().unwrap(); }
-            }
-            _ => {}
-        })
+        // 应用程序初始化设置
         .setup(|app| {
             let state: State<AppState> = app.state();
+            // 加载设置
             let settings = AppSettings::load(&app.path_resolver()).unwrap_or_default();
 
+            // 更新内存中的状态
             *state.settings.lock().unwrap() = settings.clone();
 
-            register_global_shortcut(app.handle(), &settings.shortcut).unwrap_or_else(|e| eprintln!("主快捷键失败: {}", e));
-            register_view_image_shortcut(app.handle(), &settings.view_image_shortcut).unwrap_or_else(|e| eprintln!("查看快捷键失败: {}", e));
+            // 注册全局快捷键
+            register_global_shortcut(app.handle(), &settings.shortcut).unwrap_or_else(|e| eprintln!("主快捷键注册失败: {}", e));
+            register_view_image_shortcut(app.handle(), &settings.view_image_shortcut).unwrap_or_else(|e| eprintln!("查看快捷键注册失败: {}", e));
 
+            // 显式显示主窗口
             if let Some(main_window) = app.get_window("main") {
                 main_window.show()?;
             }
@@ -83,13 +97,14 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("Tauri 构建失败")
-        .run(|_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
-            }
+        // 运行应用程序
+        .run(|_app_handle, _event| {
+            // run 闭包中的代码会在 application 退出前执行，但由于我们在 on_window_event 中调用了 exit(0)，
+            // 这里通常不需要额外的逻辑。
         });
 }
 
+/// 显示结果窗口并填充缓存的数据
 pub fn show_results_window_with_cache(app: &AppHandle) {
     let state: State<AppState> = app.state();
     let cache_opt = state.last_ocr_result.lock().unwrap().clone();
@@ -110,12 +125,14 @@ pub fn show_results_window_with_cache(app: &AppHandle) {
         window.show().unwrap();
         window.set_focus().unwrap();
 
+        // 发送 OCR 结果
         window.emit("ocr_result", OcrPayload {
             original_text: data.original_text,
             error_message: None,
             image_path: data.image_path,
         }).unwrap();
 
+        // 如果缓存中有翻译结果，也发送
         if let Some(trans) = data.translated_text {
             window.emit("translation_update", TranslationUpdatePayload {
                 translated_text: Some(trans),
@@ -125,27 +142,35 @@ pub fn show_results_window_with_cache(app: &AppHandle) {
     }
 }
 
+/// 注册主截图功能的全局快捷键
 pub fn register_global_shortcut(app_handle: AppHandle, shortcut: &str) -> Result<(), tauri::Error> {
     let mut manager = app_handle.global_shortcut_manager();
+    // 如果已存在，先注销
     if manager.is_registered(shortcut)? { manager.unregister(shortcut)?; }
 
     let shortcut_clone = shortcut.to_string();
 
     manager.register(shortcut, move || {
         let state: State<AppState> = app_handle.state();
+        // 使用原子操作检查并设置截图状态锁，防止重复触发
         if state.is_capturing.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             println!("[SHORTCUT] 截图正在进行中，忽略快捷键: {}", shortcut_clone);
             return;
         }
         println!("[SHORTCUT] 触发截图: {}", shortcut_clone);
         let handle = app_handle.clone();
+
+        // 在主线程中执行 UI 相关操作
         app_handle.run_on_main_thread(move || {
             let inner_state: State<AppState> = handle.state();
             match crate::capture::capture_fullscreen() {
                 Ok(image) => {
+                    // 缓存全屏截图
                     *inner_state.fullscreen_capture.lock().unwrap() = Some(image.clone());
+                    // 编码图像用于前端展示
                     let data_url = crate::capture::encode_image_to_data_url(&image).unwrap();
 
+                    // 获取或创建截图窗口
                     if let Some(w) = handle.get_window("screenshot") {
                         w.emit("initialize-screenshot", ScreenshotPayload{image_data_url: data_url}).unwrap();
                         w.show().unwrap();
@@ -158,6 +183,7 @@ pub fn register_global_shortcut(app_handle: AppHandle, shortcut: &str) -> Result
                 },
                 Err(e) => {
                     eprintln!("全屏截图失败: {}", e);
+                    // 发生错误时释放锁
                     inner_state.is_capturing.store(false, Ordering::SeqCst);
                 }
             }
@@ -165,17 +191,21 @@ pub fn register_global_shortcut(app_handle: AppHandle, shortcut: &str) -> Result
     }).map_err(Into::into)
 }
 
+/// 注册查看上一次截图/结果的全局快捷键
 pub fn register_view_image_shortcut(app_handle: AppHandle, shortcut: &str) -> Result<(), tauri::Error> {
     let mut manager = app_handle.global_shortcut_manager();
     if manager.is_registered(shortcut)? { let _ = manager.unregister(shortcut); }
+
     manager.register(shortcut, move || {
         let handle_for_thread = app_handle.clone();
+        // 在新线程中处理文件读取，避免阻塞
         std::thread::spawn(move || {
             let path_to_show: Option<std::path::PathBuf> = {
                 let state: State<AppState> = handle_for_thread.state();
                 let lock = state.last_screenshot_path.lock().unwrap();
                 lock.clone()
             };
+
             if let Some(path) = path_to_show {
                 if let Ok(bytes) = fs::read(&path) {
                     let b64 = general_purpose::STANDARD.encode(&bytes);
@@ -183,6 +213,7 @@ pub fn register_view_image_shortcut(app_handle: AppHandle, shortcut: &str) -> Re
                         image_data_url: format!("data:image/png;base64,{}", b64),
                         image_path: path.to_str().unwrap().to_string(),
                     };
+
                     let handle_main = handle_for_thread.clone();
                     handle_for_thread.run_on_main_thread(move || {
                         if let Some(window) = handle_main.get_window("image_viewer") {

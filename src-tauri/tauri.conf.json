@@ -74,10 +74,6 @@
     "security": {
       "csp": null
     },
-    "systemTray": {
-      "iconPath": "icons/icon.ico",
-      "iconAsTemplate": true
-    },
     "windows": [
       {
         "title": "ScreenTranslator 设置",
