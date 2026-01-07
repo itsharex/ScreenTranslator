@@ -7,6 +7,8 @@ mod translator;
 
 use tauri::{
     AppHandle, GlobalShortcutManager, Manager, State,
+    // 新增引用，用于精确控制窗口尺寸
+    PhysicalSize, PhysicalPosition, Size, Position
 };
 use tauri_plugin_autostart::MacosLauncher;
 use settings::{AppState, AppSettings};
@@ -165,20 +167,45 @@ pub fn register_global_shortcut(app_handle: AppHandle, shortcut: &str) -> Result
             let inner_state: State<AppState> = handle.state();
             match crate::capture::capture_fullscreen() {
                 Ok(image) => {
+                    // 获取截图的物理尺寸
+                    let img_width = image.width();
+                    let img_height = image.height();
+
                     // 缓存全屏截图
                     *inner_state.fullscreen_capture.lock().unwrap() = Some(image.clone());
                     // 编码图像用于前端展示
                     let data_url = crate::capture::encode_image_to_data_url(&image).unwrap();
 
                     // 获取或创建截图窗口
+                    // --- 核心修复：使用物理尺寸精确设置窗口大小，解决白边和标题栏问题 ---
                     if let Some(w) = handle.get_window("screenshot") {
+                        // 确保现有窗口尺寸和位置覆盖全屏 (Physical 确保忽略 DPI 缩放带来的误差)
+                        w.set_size(Size::Physical(PhysicalSize { width: img_width, height: img_height })).unwrap();
+                        w.set_position(Position::Physical(PhysicalPosition { x: 0, y: 0 })).unwrap();
+
                         w.emit("initialize-screenshot", ScreenshotPayload{image_data_url: data_url}).unwrap();
                         w.show().unwrap();
                         w.set_focus().unwrap();
                     } else {
-                        let _ = tauri::WindowBuilder::new(&handle, "screenshot", tauri::WindowUrl::App("screenshot.html".into()))
-                            .fullscreen(true).decorations(false).transparent(true).visible(false).skip_taskbar(true)
-                            .build().unwrap().emit("initialize-screenshot", ScreenshotPayload{image_data_url: data_url});
+                        // 创建新窗口
+                        let w = tauri::WindowBuilder::new(&handle, "screenshot", tauri::WindowUrl::App("screenshot.html".into()))
+                            .title("") // 确保无标题
+                            .decorations(false) // 无边框
+                            .transparent(true) // 透明
+                            .visible(false) // 先隐藏，设置好尺寸再显示
+                            .skip_taskbar(true)
+                            .always_on_top(true)
+                            .resizable(false)
+                            .build()
+                            .unwrap();
+
+                        // 强制设置为截图的物理尺寸，无视任务栏区域
+                        w.set_size(Size::Physical(PhysicalSize { width: img_width, height: img_height })).unwrap();
+                        w.set_position(Position::Physical(PhysicalPosition { x: 0, y: 0 })).unwrap();
+
+                        w.emit("initialize-screenshot", ScreenshotPayload{image_data_url: data_url}).unwrap();
+                        w.show().unwrap();
+                        w.set_focus().unwrap();
                     }
                 },
                 Err(e) => {

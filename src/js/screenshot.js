@@ -52,20 +52,26 @@ function drawMagnifier() {
     const zoomFactor = 2;
     const magnifierX = canvas.width - magnifierSize - 20;
     const magnifierY = 20;
+
     ctx.save();
     ctx.beginPath();
     ctx.rect(magnifierX, magnifierY, magnifierSize, magnifierSize);
     ctx.clip();
+
     const sourceX = currentX - (magnifierSize / zoomFactor / 2);
     const sourceY = currentY - (magnifierSize / zoomFactor / 2);
     const sourceWidth = magnifierSize / zoomFactor;
     const sourceHeight = magnifierSize / zoomFactor;
+
     ctx.drawImage(screenCapture,
         sourceX, sourceY, sourceWidth, sourceHeight,
         magnifierX, magnifierY, magnifierSize, magnifierSize);
+
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.lineWidth = 2;
     ctx.strokeRect(magnifierX, magnifierY, magnifierSize, magnifierSize);
+
+    // 绘制十字准星
     ctx.strokeStyle = '#ff0000';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -87,15 +93,29 @@ function drawSizeIndicator() {
     const width = Math.abs(currentX - startX);
     const height = Math.abs(currentY - startY);
     if (width === 0 || height === 0) return;
+
     const text = `${width} x ${height}`;
     const rectX = Math.min(startX, currentX);
     const rectY = Math.min(startY, currentY);
+
     let textX = rectX + width + 5;
     let textY = rectY + height + 20;
+
+    // 防止文字超出屏幕右边界
+    if (textX + 60 > canvas.width) {
+        textX = rectX + width - 80;
+    }
+    // 防止文字超出屏幕下边界
+    if (textY > canvas.height) {
+        textY = rectY + height - 10;
+    }
+
     ctx.font = '14px Arial';
     const textWidth = ctx.measureText(text).width;
+
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(textX - 5, textY - 15, textWidth + 10, 20);
+
     ctx.fillStyle = '#fff';
     ctx.fillText(text, textX, textY);
 }
@@ -104,24 +124,45 @@ function drawSizeIndicator() {
  * 主绘制函数，每一帧都会被调用以更新画布。
  */
 function draw() {
+    // 1. 清空画布
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 2. 绘制底层：完整的静态全屏截图
     if (screenCapture) {
         ctx.drawImage(screenCapture, 0, 0, canvas.width, canvas.height);
     }
-    // 绘制半透明蒙版
+
+    // 3. 绘制中间层：全屏半透明蒙版（使背景变暗）
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // 4. 处理选区绘制
     if (isDrawing) {
         const width = currentX - startX;
         const height = currentY - startY;
-        // 清除选区内的蒙版，使其高亮
-        ctx.clearRect(startX, startY, width, height);
+
+        // 计算标准化的矩形坐标（处理反向拖拽的情况），用于 drawImage
+        const realX = Math.min(startX, currentX);
+        const realY = Math.min(startY, currentY);
+        const realW = Math.abs(width);
+        const realH = Math.abs(height);
+
+        // --- 核心修复 ---
+        // 原代码使用 ctx.clearRect 挖空蒙版，导致透明穿透，在视频播放时出现黑屏。
+        // 现改为：在选区位置再次绘制原图，覆盖掉半透明蒙版，从而实现高亮效果且不穿透。
+        if (screenCapture && realW > 0 && realH > 0) {
+            ctx.drawImage(screenCapture,
+                realX, realY, realW, realH, // 源图像裁剪区域 (source)
+                realX, realY, realW, realH  // 目标绘制区域 (destination)
+            );
+        }
+
         // 绘制选区边框
         ctx.strokeStyle = 'rgba(97, 175, 239, 0.9)';
         ctx.lineWidth = 2;
         ctx.strokeRect(startX, startY, width, height);
     }
+
     drawMagnifier();
     drawSizeIndicator();
 }
@@ -153,6 +194,8 @@ canvas.addEventListener('mousedown', (e) => {
     startY = e.clientY;
     currentX = startX;
     currentY = startY;
+    // 立即重绘一帧，消除延迟
+    requestAnimationFrame(draw);
 });
 
 canvas.addEventListener('mousemove', (e) => {

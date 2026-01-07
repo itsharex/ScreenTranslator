@@ -88,10 +88,13 @@
       {
         "label": "screenshot",
         "url": "screenshot.html",
-        "fullscreen": true,
+        "title": "",
+        "fullscreen": false,
+        "maximized": false,
         "decorations": false,
         "transparent": true,
         "resizable": false,
+        "alwaysOnTop": true,
         "visible": false,
         "skipTaskbar": true
       },
