@@ -16,6 +16,11 @@ let startX, startY;         // 选区起始坐标
 let currentX, currentY;     // 鼠标当前坐标
 let screenCapture = null;   // 存储从后端接收的全屏截图 Image 对象
 
+// --- 新增：精准取色专用变量 ---
+// 使用离屏 Canvas 存储原始图像数据，避免受遮罩层影响导致颜色变暗
+let offscreenCanvas = null;
+let offscreenCtx = null;
+
 // --- 颜色拾取器相关状态 ---
 let currentColor = null;    // 存储当前鼠标下方像素的颜色信息
 let colorFormat = 'hex';    // 当前颜色值的显示格式 ('hex' 或 'rgb')
@@ -55,7 +60,7 @@ function rgbToRgbString(r, g, b) {
  * @param {string} screenshotDataUrl - 后端传递的包含全屏截图的 Base64 Data URL。
  */
 function setupCanvas(screenshotDataUrl) {
-    // 设置画布尺寸以匹配窗口大小
+    // 设置显示画布尺寸以匹配窗口大小 (CSS 像素)
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
@@ -70,7 +75,17 @@ function setupCanvas(screenshotDataUrl) {
     // 创建一个新的 Image 对象来加载截图
     screenCapture = new Image();
     screenCapture.onload = () => {
-        console.log("全屏截图加载完成，开始绘制界面。");
+        console.log(`全屏截图加载完成。显示尺寸: ${canvas.width}x${canvas.height}, 原始尺寸: ${screenCapture.naturalWidth}x${screenCapture.naturalHeight}`);
+
+        // --- 核心修复：初始化离屏 Canvas ---
+        // 创建一个与图片原始分辨率一致的内存画布，用于精准取色
+        offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = screenCapture.naturalWidth;
+        offscreenCanvas.height = screenCapture.naturalHeight;
+        offscreenCtx = offscreenCanvas.getContext('2d');
+        // 将原始图片绘制到离屏画布上（无遮罩、无缩放）
+        offscreenCtx.drawImage(screenCapture, 0, 0);
+
         // 图片加载成功后，立即进行首次绘制
         draw();
     };
@@ -108,13 +123,24 @@ function drawMagnifier() {
     ctx.clip(); // 应用剪裁，后续的绘制将只在此圆形区域内显示
 
     // 2. 绘制放大的图像内容
-    const sourceX = currentX - (magnifierSize / zoomFactor / 2);
-    const sourceY = currentY - (magnifierSize / zoomFactor / 2);
-    const sourceWidth = magnifierSize / zoomFactor;
-    const sourceHeight = magnifierSize / zoomFactor;
+    // --- 核心优化：DPI 适配 ---
+    // 计算当前显示画布与原始图片的比例
+    const scaleX = screenCapture.naturalWidth / canvas.width;
+    const scaleY = screenCapture.naturalHeight / canvas.height;
+
+    // 计算鼠标对应在原始图片上的真实坐标
+    const rawX = currentX * scaleX;
+    const rawY = currentY * scaleY;
+
+    // 在源图像(原始分辨率)上截取区域。注意：源区域宽高需要除以缩放比例
+    const sourceWidth = (magnifierSize / zoomFactor) * scaleX;
+    const sourceHeight = (magnifierSize / zoomFactor) * scaleY;
+    const sourceX = rawX - (sourceWidth / 2);
+    const sourceY = rawY - (sourceHeight / 2);
+
     ctx.drawImage(screenCapture,
-        sourceX, sourceY, sourceWidth, sourceHeight,
-        magnifierX, magnifierY, magnifierSize, magnifierSize);
+        sourceX, sourceY, sourceWidth, sourceHeight, // 源图像区域 (High DPI)
+        magnifierX, magnifierY, magnifierSize, magnifierSize); // 目标画布区域
 
     // 3. 绘制颜色信息框
     if (currentColor) {
@@ -192,6 +218,7 @@ function draw() {
 
     // 2. 绘制全屏截图作为背景
     if (screenCapture) {
+        // drawImage 会自动处理拉伸以适应 canvas 尺寸
         ctx.drawImage(screenCapture, 0, 0, canvas.width, canvas.height);
     }
 
@@ -209,8 +236,15 @@ function draw() {
         const realH = Math.abs(height);
 
         // 从背景图中“抠出”选区部分并绘制，实现高亮效果
+        // 注意：这里需要计算对应的原始图像坐标，以保证高亮区域清晰
         if (screenCapture && realW > 0 && realH > 0) {
-            ctx.drawImage(screenCapture, realX, realY, realW, realH, realX, realY, realW, realH);
+            const scaleX = screenCapture.naturalWidth / canvas.width;
+            const scaleY = screenCapture.naturalHeight / canvas.height;
+
+            ctx.drawImage(screenCapture,
+                realX * scaleX, realY * scaleY, realW * scaleX, realH * scaleY, // 源区域
+                realX, realY, realW, realH // 目标区域
+            );
         }
         // 绘制选区边框
         ctx.strokeStyle = 'rgba(97, 175, 239, 0.9)';
@@ -275,15 +309,28 @@ canvas.addEventListener('mousemove', (e) => {
     currentX = e.clientX;
     currentY = e.clientY;
 
-    // 实时获取鼠标下方像素颜色
-    if (screenCapture) {
-        const pixelData = ctx.getImageData(currentX, currentY, 1, 1).data;
-        const [r, g, b] = pixelData;
-        currentColor = {
-            r, g, b,
-            hex: rgbToHex(r, g, b),
-            rgb: rgbToRgbString(r, g, b),
-        };
+    // --- 核心修复：从离屏画布获取准确颜色 ---
+    if (offscreenCtx && screenCapture) {
+        // 1. 计算当前显示画布与原始图片的比例 (处理 DPI 缩放)
+        const scaleX = screenCapture.naturalWidth / canvas.width;
+        const scaleY = screenCapture.naturalHeight / canvas.height;
+
+        // 2. 将鼠标的屏幕坐标映射回原始图片的像素坐标
+        // 使用 Math.floor 确保取整
+        const rawX = Math.floor(currentX * scaleX);
+        const rawY = Math.floor(currentY * scaleY);
+
+        // 3. 从没有任何遮罩的离屏 Canvas 中读取像素数据
+        // 增加边界检查，防止报错
+        if (rawX >= 0 && rawY >= 0 && rawX < screenCapture.naturalWidth && rawY < screenCapture.naturalHeight) {
+            const pixelData = offscreenCtx.getImageData(rawX, rawY, 1, 1).data;
+            const [r, g, b] = pixelData;
+            currentColor = {
+                r, g, b,
+                hex: rgbToHex(r, g, b),
+                rgb: rgbToRgbString(r, g, b),
+            };
+        }
     }
 
     // 请求浏览器在下一帧重绘画布
@@ -306,9 +353,24 @@ canvas.addEventListener('mouseup', async (e) => {
         return;
     }
 
+    // --- 坐标修正：将选区坐标转换回原始图片坐标系发送给后端 ---
+    // 后端裁剪是基于原始图片的，所以这里也需要按比例转换
+    const scaleX = screenCapture.naturalWidth / canvas.width;
+    const scaleY = screenCapture.naturalHeight / canvas.height;
+
+    const realX = x * scaleX;
+    const realY = y * scaleY;
+    const realW = width * scaleX;
+    const realH = height * scaleY;
+
     // 将有效的选区信息发送给后端进行处理
     try {
-        await invoke('process_screenshot_area', { x, y, width, height });
+        await invoke('process_screenshot_area', {
+            x: realX,
+            y: realY,
+            width: realW,
+            height: realH
+        });
     } catch (error) {
         console.error("调用后端 'process_screenshot_area' 指令失败:", error);
         await cancel_screenshot(); // 即使失败也要确保取消截图状态
@@ -351,13 +413,6 @@ document.addEventListener('keydown', async (e) => {
 async function initialize() {
     console.log("截图窗口前端已加载，等待后端推送初始化数据...");
 
-    // --- 核心修复 ---
-    // 问题：原先的监听器在执行一次后会通过 unlisten() 自我注销，
-    //       导致第二次截图时，窗口虽然被重用，但无法接收新的截图数据，
-    //       从而显示陈旧的（第一次的）截图内容。
-    // 方案：移除 unlisten() 调用，将监听器变为持久性的。
-    //       这样，每次后端重用此窗口并发送 'initialize-screenshot' 事件时，
-    //       都能被正确捕获，并调用 setupCanvas 更新背景。
     await listen('initialize-screenshot', (event) => {
         console.log("接收到来自后端的初始化事件:", event);
 
