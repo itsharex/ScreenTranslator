@@ -93,7 +93,8 @@ fn main() {
             commands::check_ocr_status,
             commands::download_ocr,
             commands::check_translator_status,
-            commands::download_translator
+            commands::download_translator,
+            commands::get_last_ocr_result // --- 新增注册命令 ---
         ])
         // 应用程序初始化设置
         .setup(|app| {

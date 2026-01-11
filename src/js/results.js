@@ -66,22 +66,18 @@ function speakText() {
     window.speechSynthesis.speak(utterance);
 }
 
-// --- 事件监听 (核心修改) ---
+// --- 核心修改：重构后的 UI 更新逻辑 ---
 
 /**
- * 监听 OCR 结果事件。
- * 这是收到的第一个事件，用于立即更新原文和图片信息。
+ * 处理 OCR 结果数据并更新 UI
  */
-listen('ocr_result', (event) => {
-    // --- 日志 ---
-    console.log("[RESULTS.JS] 接收到 'ocr_result' 事件, payload:", event.payload);
+function handleOcrResultPayload(payload) {
+    console.log("[RESULTS.JS] 处理 OCR 数据:", payload);
 
-    const payload = event.payload;
-
-    // 重置UI状态
+    // 重置译文区域颜色
     translatedTextEl.style.color = 'var(--text-color-bright)';
 
-    // 步骤 1: 处理图片路径，无论成功失败都执行
+    // 1. 处理图片路径
     if (payload.image_path) {
         currentImagePath = payload.image_path;
         copyImageBtn.style.display = 'inline-block';
@@ -92,9 +88,8 @@ listen('ocr_result', (event) => {
         saveImageBtn.style.display = 'none';
     }
 
-    // 步骤 2: 根据是否有错误来更新文本区域
+    // 2. 根据是否有错误来更新文本区域
     if (payload.error_message) {
-        // OCR 阶段就发生错误
         originalTextContent = payload.original_text || "错误";
         translatedTextContent = payload.error_message;
 
@@ -102,38 +97,44 @@ listen('ocr_result', (event) => {
         translatedTextEl.textContent = translatedTextContent;
         translatedTextEl.style.color = 'var(--error-color)';
     } else {
-        // OCR 成功
         originalTextContent = payload.original_text || '';
-        translatedTextContent = ''; // 清空，等待翻译结果
-
+        // 只有当译文内容为空时（即刚识别完），才显示“翻译中...”
+        // 否则保持现有内容（可能是后续推送的译文或从缓存拉取的译文）
+        if (!translatedTextContent) {
+            translatedTextEl.textContent = '翻译中...';
+        }
         originalTextEl.textContent = originalTextContent;
-        translatedTextEl.textContent = '翻译中...'; // 关键的用户反馈
     }
-});
-
+}
 
 /**
- * 监听翻译更新事件。
- * 这个事件在 OCR 成功后才会收到，用于更新译文区域。
+ * 处理翻译结果数据并更新 UI
  */
-listen('translation_update', (event) => {
-    // --- 日志 ---
-    console.log("[RESULTS.JS] 接收到 'translation_update' 事件, payload:", event.payload);
+function handleTranslationUpdatePayload(payload) {
+    console.log("[RESULTS.JS] 处理翻译数据:", payload);
 
-    const payload = event.payload;
-
-    // 根据翻译结果更新UI
     if (payload.error_message) {
-        // 翻译阶段发生错误
         translatedTextContent = payload.error_message;
         translatedTextEl.textContent = translatedTextContent;
         translatedTextEl.style.color = 'var(--error-color)';
     } else {
-        // 翻译成功
         translatedTextContent = payload.translated_text || '';
         translatedTextEl.textContent = translatedTextContent;
         translatedTextEl.style.color = 'var(--text-color-bright)';
     }
+}
+
+
+// --- 事件监听 ---
+
+listen('ocr_result', (event) => {
+    // 重置译文状态，因为这是一次新的识别
+    translatedTextContent = '';
+    handleOcrResultPayload(event.payload);
+});
+
+listen('translation_update', (event) => {
+    handleTranslationUpdatePayload(event.payload);
 });
 
 
@@ -189,10 +190,42 @@ saveImageBtn.addEventListener('click', async () => {
     }
 });
 
-// --- 初始化 ---
-pinBtn.classList.add('active');
-pinBtn.title = "取消置顶";
-copyImageBtn.style.display = 'none';
-saveImageBtn.style.display = 'none';
+// --- 初始化与数据拉取 ---
 
-console.log("[RESULTS.JS] 结果窗口初始化完成，事件监听器已设置。");
+async function init() {
+    pinBtn.classList.add('active');
+    pinBtn.title = "取消置顶";
+    copyImageBtn.style.display = 'none';
+    saveImageBtn.style.display = 'none';
+
+    console.log("[RESULTS.JS] 结果窗口初始化...");
+
+    // 核心修复：主动从后端获取最新的缓存数据
+    // 这解决了因窗口重新创建导致的事件丢失问题
+    try {
+        const cached = await invoke('get_last_ocr_result');
+        if (cached) {
+            console.log("[RESULTS.JS] 成功拉取缓存数据:", cached);
+
+            // 1. 恢复 OCR 数据
+            handleOcrResultPayload({
+                original_text: cached.original_text,
+                error_message: null,
+                image_path: cached.image_path
+            });
+
+            // 2. 恢复翻译数据 (如果有)
+            if (cached.translated_text) {
+                handleTranslationUpdatePayload({
+                    translated_text: cached.translated_text,
+                    error_message: null
+                });
+            }
+        }
+    } catch (err) {
+        console.error("[RESULTS.JS] 拉取缓存数据失败:", err);
+    }
+}
+
+// 执行初始化
+init();

@@ -40,6 +40,12 @@ const TRANSLATOR_EXE_NAME: &str = "translate_engine.exe";
 
 // --- Tauri 命令定义 ---
 
+// --- 新增：获取最后一次OCR结果的命令 (解决窗口重建数据丢失问题) ---
+#[tauri::command]
+pub fn get_last_ocr_result(state: State<AppState>) -> Option<LastOcrResult> {
+    state.last_ocr_result.lock().unwrap().clone()
+}
+
 // --- OCR 引擎管理 ---
 #[tauri::command]
 pub async fn check_ocr_status(app: tauri::AppHandle) -> Result<bool, String> {
@@ -262,6 +268,13 @@ pub async fn process_image_from_path(
     action: String
 ) -> Result<(), String> {
     println!("[COMMANDS] 手动处理图片: {}, 动作: {}", path, action);
+
+    // --- 修改：在开始处理时显示 Loading 窗口 ---
+    if let Some(loading_window) = app.get_window("loading") {
+        let _ = loading_window.center();
+        let _ = loading_window.show();
+    }
+
     let settings = state.settings.lock().unwrap().clone();
 
     let do_translate = match action.as_str() {
@@ -269,6 +282,10 @@ pub async fn process_image_from_path(
         "ocr" => false,
         _ => {
             println!("[COMMANDS] 未知动作: '{}', 操作已取消。", action);
+            // 异常退出时记得隐藏 Loading
+            if let Some(loading_window) = app.get_window("loading") {
+                let _ = loading_window.hide();
+            }
             return Ok(());
         }
     };
@@ -277,6 +294,11 @@ pub async fn process_image_from_path(
 
     let app_handle_for_main_thread = app.clone();
     app.run_on_main_thread(move || {
+        // --- 修改：在显示结果窗口前，隐藏 Loading 窗口 ---
+        if let Some(loading_window) = app_handle_for_main_thread.get_window("loading") {
+            let _ = loading_window.hide();
+        }
+
         crate::show_results_window_with_cache(&app_handle_for_main_thread);
     }).map_err(|e| format!("无法在主线程上运行任务: {}", e))?;
 
